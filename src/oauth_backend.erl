@@ -5,119 +5,86 @@
 %%% Created: 04 Feb 2013 by Anton I Alferov <casper@ubca-dp>
 %%%-------------------------------------------------------------------
 
--module(yahoo_oauth_backend).
+-module(oauth_backend).
 
--export([get_request_token/2, get_token/3, refresh_token/1]).
+-export([get_request_token/2, get_access_token/2, refresh_access_token/2]).
 -export([auth_header/4, auth_query/4]).
 
--include("yahoo_oauth_backend.hrl").
+-include("oauth.hrl").
+-include("oauth_backend.hrl").
 
--define(OAuthRequestTokenRecord, {#oauth_request_token{}, [
-    "oauth_token",
-    "oauth_token_secret",
-    "oauth_expires_in",
-    "xoauth_request_auth_url"
-]}).
--define(OAuthTokenRecord, {#oauth_token{}, [
-    "oauth_token",
-    "oauth_token_secret",
-    "oauth_expires_in",
-    "oauth_session_handle",
-    "oauth_authorization_expires_in",
-    "xoauth_yahoo_guid"
-]}).
-
+-define(Version, "1.0").
 -define(NonceFormat, [4]).
 
 get_request_token(
-	#oauth_consumer{key = ConsumerKey, secret = ConsumerSecret},
-	#oauth_config{
-		url = Url, callback = Callback, version = Version,
-		lang = Lang, signature_method = SignatureMethod
-	}
+	#oauth_consumer{key = ConsumerKey,
+		secret = ConsumerSecret, callback = Callback},
+	#oauth_config{url = Url,
+		signature_method = SignatureMethod, options = Options}
 ) ->
-	read_oauth(request_token(Url ++ "/get_request_token", [
+	read_oauth(request_token(?OAuthUrl(initiate, Url), [
 		{"oauth_callback", http_uri:encode(Callback)},
 		{"oauth_consumer_key", ConsumerKey},
 		{"oauth_nonce", generate_nonce()},
 		{"oauth_signature_method", SignatureMethod},
 		{"oauth_timestamp", timestamp()},
-		{"oauth_version", Version},
-		{"xoauth_lang_pref", Lang}
-	], ConsumerSecret), ?OAuthRequestTokenRecord).
+		{"oauth_version", ?Version}
+	] ++ Options, ConsumerSecret)).
 
-get_token(
-	#oauth_request{token = Token, secret = TokenSecret, verifier = Verifier},
-	#oauth_consumer{key = ConsumerKey, secret = ConsumerSecret},
-	#oauth_config{url = Url, version = Version,
-		signature_method = SignatureMethod}
-) ->
-	read_oauth(request_token(Url ++ "/get_token", [
+get_access_token(#oauth{
+	consumer = #oauth_consumer{key = ConsumerKey, secret = ConsumerSecret},
+	config = #oauth_config{url = Url, signature_method = SignatureMethod},
+	token = #oauth_token{token = Token, secret = TokenSecret}
+}, Verifier) ->
+	read_oauth(request_token(?OAuthUrl(token, Url), [
 		{"oauth_consumer_key", ConsumerKey},
 		{"oauth_nonce", generate_nonce()},
 		{"oauth_signature_method", SignatureMethod},
 		{"oauth_timestamp", timestamp()},
 		{"oauth_token", Token},
 		{"oauth_verifier", Verifier},
-		{"oauth_version", Version}
-	], ConsumerSecret, TokenSecret), ?OAuthTokenRecord).
+		{"oauth_version", ?Version}
+	], ConsumerSecret, TokenSecret)).
 
-refresh_token(#oauth{
-	token = Token, secret = TokenSecret, session_handle = SessionHandle,
+refresh_access_token(#oauth{
 	consumer = #oauth_consumer{key = ConsumerKey, secret = ConsumerSecret},
-	config = #oauth_config{url = Url, version = Version,
-		signature_method = SignatureMethod}
-}) ->
-	read_oauth(request_token(Url ++ "/get_token", [
+	config = #oauth_config{url = Url, signature_method = SignatureMethod},
+	token = #oauth_token{token = Token, secret = TokenSecret}
+}, Options) ->
+	read_oauth(request_token(?OAuthUrl(token, Url), [
 		{"oauth_consumer_key", ConsumerKey},
 		{"oauth_nonce", generate_nonce()},
-		{"oauth_session_handle", SessionHandle},
 		{"oauth_signature_method", SignatureMethod},
 		{"oauth_timestamp", timestamp()},
 		{"oauth_token", http_uri:encode(Token)},
-		{"oauth_version", Version}
-	], ConsumerSecret, TokenSecret), ?OAuthTokenRecord).
+		{"oauth_version", ?Version}
+	] ++ Options, ConsumerSecret, TokenSecret)).
 
 request_token(Url, Params, ConsumerSecret) ->
 	request_token(Url, Params, ConsumerSecret, []).
 request_token(Url, Params, ConsumerSecret, TokenSecret) ->
-	{"oauth_signature_method", SignatureMethod} =
-		lists:keyfind("oauth_signature_method", 1, Params),
-	Signature = signature(signature_method(SignatureMethod),
-		post, Url, Params, ConsumerSecret, TokenSecret),
+	Signature = signature(signature_method(
+		utils_lists:keyfind("oauth_signature_method", Params)),
+		post, Url, Params, ConsumerSecret, TokenSecret
+	),
 	httpc:request(post, {Url, [], "application/x-www-form-urlencoded",
-		utils_http:query_string([{"oauth_signature", Signature}|Params])},
-	[], []).
+		utils_http:query_string([{"oauth_signature", Signature}|Params])
+	}, [], []).
 
-read_oauth({ok, {{_, 200, _}, _, Body}}, {Record, Keys}) ->
-	Query = utils_http:read_query(Body),
-	{ok, lists:foldl(fun(Key, R) -> case lists:keyfind(Key, 1, Query) of
-		{Key, Value} -> update_record(R, Key, Value); false -> R
-	end end, Record, Keys)};
-read_oauth({ok, {{_, _, _}, _, Body}}, _) -> {error, Body};
-read_oauth(Error, _) -> Error.
-
-update_record(R = #oauth_request_token{}, Key, Value) -> case Key of
-	"oauth_token" -> R#oauth_request_token{token = Value};
-	"oauth_token_secret" -> R#oauth_request_token{secret = Value};
-	"oauth_expires_in" -> R#oauth_request_token{expires_in = Value};
-	"xoauth_request_auth_url" ->
-		R#oauth_request_token{request_auth_url = Value}
-end;
-update_record(R = #oauth_token{}, Key, Value) -> case Key of
-	"oauth_token" -> R#oauth_token{token = Value};
-	"oauth_token_secret" -> R#oauth_token{secret = Value};
-	"oauth_expires_in" -> R#oauth_token{expires_in = Value};
-	"oauth_session_handle" -> R#oauth_token{session_handle = Value};
-	"oauth_authorization_expires_in" ->
-		R#oauth_token{authorization_expires_in = Value};
-	"xoauth_yahoo_guid" -> R#oauth_token{yahoo_guid = Value}
-end.
+read_oauth({ok, {{_, 200, _}, _, Body}}) ->
+	{ok, lists:foldl(fun({Key, Value}, T) -> case Key of
+		"oauth_token" -> T#oauth_token{token = Value};
+		"oauth_token_secret" -> T#oauth_token{secret = Value};
+		"oauth_callback_confirmed" -> T;
+		Key -> T#oauth_token{options = [{Key, Value}|T#oauth_token.options]}
+	end end, #oauth_token{}, utils_http:read_query(Body))};
+read_oauth({ok, {{_, _, _}, _, Body}}) -> {error, Body};
+read_oauth(Error) -> Error.
 
 auth_header(Method, Url, Params, OAuth = #oauth{
-	secret = TokenSecret,
 	consumer = #oauth_consumer{secret = ConsumerSecret},
-	config = #oauth_config{realm = Realm, signature_method = SignatureMethod}
+	config = #oauth_config{realm = Realm, signature_method = SignatureMethod},
+	token = #oauth_token{secret = TokenSecret}
 }) ->
 	AuthParams = auth_params(OAuth),
 	Signature = signature(signature_method(SignatureMethod),
@@ -128,9 +95,9 @@ auth_header(Method, Url, Params, OAuth = #oauth{
 	])}.
 
 auth_query(Method, Url, Params, OAuth = #oauth{
-	secret = TokenSecret,
 	consumer = #oauth_consumer{secret = ConsumerSecret},
-	config = #oauth_config{signature_method = SignatureMethod}
+	config = #oauth_config{signature_method = SignatureMethod},
+	token = #oauth_token{secret = TokenSecret}
 }) ->
 	AuthParams = auth_params(OAuth),
 	Signature = signature(signature_method(SignatureMethod),
@@ -138,16 +105,16 @@ auth_query(Method, Url, Params, OAuth = #oauth{
 	utils_http:query_string([{"oauth_signature", Signature}|AuthParams]).
 
 auth_params(#oauth{
-	token = Token, consumer = #oauth_consumer{key = ConsumerKey},
-	config = #oauth_config{version = Version,
-		signature_method = SignatureMethod}
+	consumer = #oauth_consumer{key = ConsumerKey},
+	config = #oauth_config{signature_method = SignatureMethod},
+	token = #oauth_token{token = Token}
 }) -> [
 	{"oauth_consumer_key", ConsumerKey},
 	{"oauth_nonce", generate_nonce()},
 	{"oauth_signature_method", SignatureMethod},
 	{"oauth_timestamp", timestamp()},
 	{"oauth_token", http_uri:encode(Token)},
-	{"oauth_version", Version}
+	{"oauth_version", ?Version}
 ].
 
 signature(plaintext, _Method, _Url, _Params, ConsumerSecret, TokenSecret) ->
