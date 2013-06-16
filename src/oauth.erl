@@ -33,7 +33,7 @@ auth_url(yahoo, OAuth) ->
 	utils_lists:keyfind("xoauth_request_auth_url",
 		OAuth#oauth.token#oauth_token.options).
 
-get_request_token(Consumer, Network) when is_atom(Network) ->
+get_request_token(Network, Consumer) when is_atom(Network) ->
 	get_request_token(Consumer, ?OAuthConfig(Network));
 
 get_request_token(Consumer, Config) ->
