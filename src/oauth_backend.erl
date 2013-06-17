@@ -64,7 +64,7 @@ request_token(Url, Params, ConsumerSecret) ->
 	request_token(Url, Params, ConsumerSecret, []).
 request_token(Url, Params, ConsumerSecret, TokenSecret) ->
 	Signature = signature(signature_method(
-		utils_lists:keyfind("oauth_signature_method", Params)),
+		utils_lists:keyfind2("oauth_signature_method", Params)),
 		post, Url, Params, ConsumerSecret, TokenSecret
 	),
 	httpc:request(post, {Url, [], "application/x-www-form-urlencoded",
