@@ -30,7 +30,7 @@ auth_params(dropbox, OAuth) -> auth_params(OAuth) ++
 auth_params(_Network, OAuth) -> auth_params(OAuth).
 auth_params(OAuth) -> [{"oauth_token", OAuth#oauth.token#oauth_token.token}].
 
-auth_result(Result) -> {ok, utils_lists:keyfind("verifier", Result)};
+auth_result(Result) -> {ok, utils_lists:keyfind("oauth_verifier", Result)}.
 
 get_request_token(Network, Consumer) when is_atom(Network) ->
 	get_request_token(Consumer, ?OAuthConfig(Network));
