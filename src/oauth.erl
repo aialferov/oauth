@@ -8,7 +8,7 @@
 -module(oauth).
 
 -export([start/0, stop/0]).
--export([auth_url/2]).
+-export([auth_url/2, auth_result/1]).
 -export([get_request_token/2, get_access_token/2, refresh_access_token/2]).
 -export([auth_header/4, auth_query/4]).
 
@@ -19,19 +19,18 @@
 start() -> application:start(?MODULE).
 stop() -> application:stop(?MODULE).
 
-auth_url(dropbox, OAuth) ->
-	utils_http:url(?OAuthUrl(authorize, OAuth#oauth.config#oauth_config.url), [
-		{"oauth_token", OAuth#oauth.token#oauth_token.token},
-		{"oauth_callback", OAuth#oauth.consumer#oauth_consumer.callback}
-	]);
+auth_url(Network, OAuth) -> utils_http:url(
+	auth_uri(Network, OAuth), auth_params(Network, OAuth)).
 
-auth_url(twitter, OAuth) ->
-	utils_http:url(?OAuthUrl(authorize, OAuth#oauth.config#oauth_config.url),
-		[{"oauth_token", OAuth#oauth.token#oauth_token.token}]);
+auth_uri(_Network, OAuth) -> ?OAuthUrl(authorize,
+	OAuth#oauth.config#oauth_config.url).
 
-auth_url(yahoo, OAuth) ->
-	utils_lists:keyfind("xoauth_request_auth_url",
-		OAuth#oauth.token#oauth_token.options).
+auth_params(dropbox, OAuth) -> auth_params(OAuth) ++
+	[{"oauth_callback", OAuth#oauth.consumer#oauth_consumer.callback}];
+auth_params(_Network, OAuth) -> auth_params(OAuth).
+auth_params(OAuth) -> [{"oauth_token", OAuth#oauth.token#oauth_token.token}].
+
+auth_result(Result) -> {ok, utils_lists:keyfind("verifier", Result)};
 
 get_request_token(Network, Consumer) when is_atom(Network) ->
 	get_request_token(Consumer, ?OAuthConfig(Network));
