@@ -122,8 +122,8 @@ signature(plaintext, _Method, _Url, _Params, ConsumerSecret, TokenSecret) ->
 signature(hmac_sha1, Method, Url, Params, ConsumerSecret, TokenSecret) ->
 	BaseString = method(Method) ++ "&" ++ http_uri:encode(Url) ++ "&" ++
 		http_uri:encode(utils_http:query_string(lists:keysort(1, Params))),
-	http_uri:encode(binary_to_list(base64:encode(crypto:sha_mac(
-		ConsumerSecret ++ "&" ++ TokenSecret, BaseString)))).
+	http_uri:encode(binary_to_list(base64:encode(crypto:hmac(
+		sha, ConsumerSecret ++ "&" ++ TokenSecret, BaseString)))).
 
 method(get) -> "GET";
 method(put) -> "PUT";
